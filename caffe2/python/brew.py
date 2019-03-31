@@ -46,6 +46,7 @@ class HelperWrapper(object):
         'spatial_bn': spatial_bn,
         'spatial_gn': spatial_gn,
         'relu': relu,
+        'leaky_relu': leaky_relu,
         'prelu': prelu,
         'tanh': tanh,
         'concat': concat,
