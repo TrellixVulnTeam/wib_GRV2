@@ -556,8 +556,8 @@ def addModel(input_model, input_class, input_scales, input_batch_size, input_dat
 def trainModel(input_class, input_scales, input_gpu):
 
     # # Training params
-    training_net_batch_size = 64   # batch size for training
-    validation_net_batch_size = 100   # batch size for training
+    training_net_batch_size = 50   # batch size for training
+    validation_net_batch_size = 50   # batch size for training
     validation_images = 6000        # total number of validation images
     training_iters = 40000           # total training iterations
     validation_interval = 1000       # validate every <validation_interval> training iterations
