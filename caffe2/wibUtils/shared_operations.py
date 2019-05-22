@@ -94,7 +94,7 @@ def BatchNormShared(input_model, blob_in, blob_out, shared_layer_param, order="N
                  blob_out + "_shared_sm", blob_out + "_shared_siv"]
     if 'is_test' in kwargs and kwargs['is_test']:
         blob_outputs = input_model.net.SpatialBN(
-            blob_ins, order=order, **kwargs)
+            blob_ins, [blob_out], order=order, **kwargs)
         return blob_outputs
     else:
         blob_outputs = input_model.net.SpatialBN(
