@@ -223,29 +223,25 @@ def prepare_data():
 
 def AddInput(model, batch_size, db, db_type, shared_prefix=None, scale=1, is_test=False):
 
-    out_data_name = "data_uint8" if not is_test else "data_uint8_test"
-    out_label_name = "label" if not is_test else "label_test"
-    if shared_prefix is not None:
-        out_data_name = '{}_shared_{}'.format(shared_prefix, out_data_name)
-
-    # load the data
-    data_uint8, label = brew.db_input(
-        model,
-        blobs_out=[out_data_name, out_label_name],
-        batch_size=batch_size,
-        db=db,
-        db_type=db_type,
-    )
+    data_uint8 = "data_uint8"
+    label = "label"
+    if shared_prefix is None:
+        # load the data
+        data_uint8, label = brew.db_input(
+            model,
+            blobs_out=[data_uint8, label],
+            batch_size=batch_size,
+            db=db,
+            db_type=db_type,
+        )
 
     if scale != 1:
-        resize_data = 'resize_{}'.format(out_data_name)
+        resize_data = 'resize_{}'.format(data_uint8)
         data_uint8 = model.ResizeNearest(data_uint8, resize_data, width_scale=2.0, height_scale=2.0)
 
     map_data_name = "data"
     if shared_prefix is not None:
         map_data_name = '{}_shared_{}'.format(shared_prefix, map_data_name)
-        if is_test:
-            map_data_name = '{}_test'.format(map_data_name)
 
     # cast the data to float
     data = model.Cast(data_uint8, map_data_name, to=core.DataType.FLOAT)
@@ -355,7 +351,27 @@ def add_conv_unit(input_model, input_blob_name, output_blob_name, input_param_di
     return operation_param
 
 
-def Add_Original_CIFAR10_Model(model, data, num_classes, image_channels, is_test=False):
+def add_fc_head(model, input_param, input_class_num, is_test=False):
+    param_dict_list = []
+    operation_param = {'operation': 'dropout',
+                       'out_blob_name': '{}_dropout'.format(input_param['out_blob_name']),
+                       'input_blob_names': [input_param['out_blob_name']],
+                       'ratio': 0.4,
+                       'dim_in': input_param['dim_out'], 'dim_out': input_param['dim_out']}
+    add_operation(model, operation_param, param_dict_list, is_test=is_test)
+
+    operation_param = {'operation': 'fc', 'out_blob_name': 'fc1',
+                       'dim_out': 128}
+    add_operation(model, operation_param, param_dict_list)
+
+    operation_param = {'operation': 'fc', 'out_blob_name': 'fc2',
+                       'dim_out': input_class_num}
+    add_operation(model, operation_param, param_dict_list)
+
+    return param_dict_list
+
+
+def Add_Original_Conv_Model(model, data, image_channels, is_test=False):
 
     param_dict_list = []
 
@@ -422,31 +438,13 @@ def Add_Original_CIFAR10_Model(model, data, num_classes, image_channels, is_test
                   batchnorm=True, relu=True, norm_end=True, is_test=is_test)
 
     # Pooling layer 3
-    operation_param = {'operation': 'average_pool', 'out_blob_name': 'average_average_pool',
+    operation_param = {'operation': 'max_pool', 'out_blob_name': 'max_average_pool',
                        'global_pooling': True}
     add_operation(model, operation_param, param_dict_list)
-    # Fully connected layers
-
-    operation_param = {'operation': 'dropout',
-                       'out_blob_name': '{}_dropout'.format(param_dict_list[-1]['out_blob_name']),
-                       'input_blob_names': [param_dict_list[-1]['out_blob_name']],
-                       'ratio': 0.4,
-                       'dim_in': param_dict_list[-1]['dim_out'], 'dim_out': param_dict_list[-1]['dim_out']}
-    add_operation(model, operation_param, param_dict_list, is_test=is_test)
-
-    operation_param = {'operation': 'fc', 'out_blob_name': 'fc1',
-                       'dim_out': 128}
-    add_operation(model, operation_param, param_dict_list)
-
-    operation_param = {'operation': 'fc', 'out_blob_name': 'fc2',
-                       'dim_out': num_classes}
-    add_operation(model, operation_param, param_dict_list)
-
-    # Softmax layer
     return param_dict_list
 
 
-def Add_Shared_CIFAR10_Model(model, shared_prefix, shared_data_name, input_raw_param_list, is_test=False):
+def Add_Shared_Model(model, shared_prefix, shared_data_name, input_raw_param_list, is_test=False):
 
     cur_out_blob_name = ''
     for cur_layer_index, cur_layer_param in enumerate(input_raw_param_list):
@@ -457,8 +455,8 @@ def Add_Shared_CIFAR10_Model(model, shared_prefix, shared_data_name, input_raw_p
 def Shared_Feature_Concate(input_model, feature_list, input_feature_name):
     brew.concat(input_model, feature_list, input_feature_name, axis=3)
 
-    concate_pool_name = '{}_global_pool'.format(input_feature_name)
-    brew.average_pool(input_model, input_feature_name, concate_pool_name, global_pooling=True)
+    concate_pool_name = '{}_max_pool'.format(input_feature_name)
+    brew.max_pool(input_model, input_feature_name, concate_pool_name, global_pooling=True)
     return concate_pool_name
 
 
@@ -474,22 +472,20 @@ def add_softmax(input_model, input_blob_name, out_blob_name):
     return out_blob_name
 
 
-def add_shared_net(input_model, input_raw_param_list, shared_prefix,
-                   lmdb_path, input_batch_size, scale=1, is_test=False):
+def add_shared_net(input_model, input_conv_param_list, shared_prefix,
+                   input_batch_size, scale=1, is_test=False):
 
     shared_data_name, shared_label = AddInput(input_model, batch_size=input_batch_size,
-                                              db=lmdb_path, db_type='lmdb', shared_prefix=shared_prefix,
+                                              db='', db_type='lmdb', shared_prefix=shared_prefix,
                                               scale=scale, is_test=is_test)
 
-    print('BatchSize:{}     Train:{}'.format(input_batch_size, is_test))
-    print('DataName:{}'.format(shared_data_name))
-    shared_top_feature = Add_Shared_CIFAR10_Model(input_model, shared_prefix, shared_data_name,
-                                                  input_raw_param_list, is_test=is_test)
+    conv_pool_feature = Add_Shared_Model(input_model, shared_prefix, shared_data_name,
+                                         input_conv_param_list, is_test=is_test)
 
-    shared_feature_list = [input_raw_param_list[-1]['out_blob_name'], shared_top_feature]
+    shared_feature_list = [input_conv_param_list[-1]['out_blob_name'], conv_pool_feature]
 
     reshape_feature_list = []
-    top_dim = input_raw_param_list[-1]['dim_out']
+    top_dim = input_conv_param_list[-1]['dim_out']
     top_shape = (input_batch_size, top_dim)
     new_shape = (input_batch_size, top_dim, 1, 1)
 
@@ -502,10 +498,7 @@ def add_shared_net(input_model, input_raw_param_list, shared_prefix,
 
     concate_reshape_name = add_reshape_layer(input_model, concate_pool_feature_name,
                                              concate_pool_feature_name, top_shape)
-
-    softmax_name = '{}_softmax'.format(concate_reshape_name)
-    add_softmax(input_model, concate_reshape_name, softmax_name)
-    return softmax_name
+    return concate_reshape_name
 
 
 def AddTrainingOperators(model, softmax, label):
@@ -537,13 +530,21 @@ def addModel(input_model, input_class, input_scales, input_batch_size, input_dat
     data_name, label = AddInput(input_model, batch_size=input_batch_size,
                                 db=input_data_path, db_type='lmdb', scale=input_scales[0], is_test=is_test)
 
-    temp_param_list = Add_Original_CIFAR10_Model(input_model, data_name, input_class, 3, is_test=is_test)
+    conv_param_list = Add_Original_Conv_Model(input_model, data_name, 3, is_test=is_test)
 
     if len(input_scales) == 1:
-        softmax_name = add_softmax(input_model, temp_param_list[-1]['out_blob_name'], 'soft_max')
+        fc_param_list = add_fc_head(input_model, conv_param_list[-1], input_class, is_test=is_test)
+        conv_param_list.extend(fc_param_list)
+        softmax_name = add_softmax(input_model, conv_param_list[-1]['out_blob_name'], 'soft_max')
     else:
-        softmax_name = add_shared_net(input_model, temp_param_list, 'scale{}'.format(input_scales[1]),
-                                      input_data_path, input_batch_size, scale=input_scales[1], is_test=is_test)
+
+        concate_reshape_name = add_shared_net(input_model, conv_param_list, 'scale{}'.format(input_scales[1]),
+                                              input_batch_size, scale=input_scales[1], is_test=is_test)
+
+        conv_pool_param = copy.deepcopy(conv_param_list[-1])
+        conv_pool_param['out_blob_name'] = concate_reshape_name
+        fc_param_list = add_fc_head(input_model, conv_pool_param, input_class, is_test=is_test)
+        softmax_name = add_softmax(input_model, fc_param_list[-1]['out_blob_name'], 'soft_max')
 
     if not is_test:
         AddTrainingOperators(input_model, softmax_name, label)
@@ -556,10 +557,10 @@ def addModel(input_model, input_class, input_scales, input_batch_size, input_dat
 def trainModel(input_class, input_scales, input_gpu):
 
     # # Training params
-    training_net_batch_size = 50   # batch size for training
-    validation_net_batch_size = 50   # batch size for training
+    training_net_batch_size = 100   # batch size for training
+    validation_net_batch_size = 100   # batch size for training
     validation_images = 6000        # total number of validation images
-    training_iters = 40000           # total training iterations
+    training_iters = 100000           # total training iterations
     validation_interval = 1000       # validate every <validation_interval> training iterations
 
     assert validation_images % validation_net_batch_size == 0, 'the remainder of Validation Batchsize should be zero'
