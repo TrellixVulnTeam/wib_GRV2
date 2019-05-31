@@ -16,13 +16,12 @@ from imageio import imread
 from matplotlib import pyplot as plt
 sys.path.insert(0, '/home/wib/dl/pytorch/build')
 sys.path.append('/home/wib/dl/pytorch/caffe2')
-sys.path.append('/home/wib/dl/Detectron/detectron/net_test')
 from caffe2.proto import caffe2_pb2
 from caffe2.python import workspace, model_helper, utils, core, brew
 from caffe2.python import dyndep, optimizer
 from wibUtils.shared_operations import *
 from wibUtils.operationWarpper import *
-from my_net import *
+from wibUtils.model_visual import *
 # Set paths and variables
 # data_folder is where the data is downloaded and unpacked
 data_folder = '/home/wib/data/cifar10'
@@ -278,9 +277,10 @@ def add_operation(input_model, param, input_param_dict_list, is_test=False):
     param['dim_out'] = param['dim_out'] if 'dim_out' in param else param['dim_in']
 
     if param['operation'] == 'conv':
+        no_bias = True if 'no_bias' not in param else param['no_bias']
         brew.conv(input_model, param['input_blob_names'][0], param['out_blob_name'],
-                  dim_in=param['dim_in'], dim_out=param['dim_out'], kernel=param['kernel'],
-                  stride=param['stride'], pad=param['pad'])
+                      dim_in=param['dim_in'], dim_out=param['dim_out'], kernel=param['kernel'],
+                      stride=param['stride'], pad=param['pad'], no_bias=no_bias)
     elif param['operation'] == 'fc':
         brew.fc(input_model, param['input_blob_names'][0], param['out_blob_name'],
                 dim_in=param['dim_in'], dim_out=param['dim_out'])
@@ -312,11 +312,13 @@ def add_conv_unit(input_model, input_blob_name, output_blob_name, input_param_di
     assert 'is_test' in kwargs, 'Is_test not in conv param, ConvName:{}'.format(output_blob_name)
 
     input_list = input_blob_name if type(input_blob_name) is list else [input_blob_name]
+
+    no_bias = True if 'batchnorm' not in kwargs else kwargs['batchnorm']
     operation_param = {'operation': 'conv',
                        'out_blob_name': output_blob_name,
                        'input_blob_names': input_list,
                        'dim_in': kwargs['dim_in'], 'dim_out':  kwargs['dim_out'],
-                       'kernel': kwargs['kernel'], 'stride': kwargs['stride'], 'pad': kwargs['pad']}
+                       'kernel': kwargs['kernel'], 'stride': kwargs['stride'], 'pad': kwargs['pad'], 'no_bias': no_bias}
     add_operation(input_model, operation_param, input_param_dict_list)
 
     if 'norm_end' in kwargs and kwargs['norm_end']:
@@ -438,7 +440,7 @@ def Add_Original_Conv_Model(model, data, image_channels, is_test=False):
                   batchnorm=True, relu=True, norm_end=True, is_test=is_test)
 
     # Pooling layer 3
-    operation_param = {'operation': 'max_pool', 'out_blob_name': 'max_average_pool',
+    operation_param = {'operation': 'max_pool', 'out_blob_name': 'max_pool',
                        'global_pooling': True}
     add_operation(model, operation_param, param_dict_list)
     return param_dict_list
@@ -560,7 +562,7 @@ def trainModel(input_class, input_scales, input_gpu):
     training_net_batch_size = 100   # batch size for training
     validation_net_batch_size = 100   # batch size for training
     validation_images = 6000        # total number of validation images
-    training_iters = 100000           # total training iterations
+    training_iters = 200000           # total training iterations
     validation_interval = 1000       # validate every <validation_interval> training iterations
 
     assert validation_images % validation_net_batch_size == 0, 'the remainder of Validation Batchsize should be zero'
