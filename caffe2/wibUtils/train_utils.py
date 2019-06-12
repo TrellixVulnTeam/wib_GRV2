@@ -47,7 +47,11 @@ def AddCheckpoints(model, output_dir, checkpoint_iters, db_type):
 def addModel(input_model, input_data, input_label, input_class, input_scales, input_batch_size, device_opts,
              is_test=False, **kwargs):
 
-    conv_param_list = Add_Original_Conv_Model(input_model, input_data, 3, device_opts, is_test=is_test)
+    feed_data_name = input_data
+    if len(input_scales) == 1 and input_scales[0] != 1:
+        feed_data_name = add_resize_layer(input_model, feed_data_name, input_scales[0], device_opts)
+
+    conv_param_list = Add_Original_Conv_Model(input_model, feed_data_name, 3, device_opts, is_test=is_test)
 
     if len(input_scales) == 1:
         fc_param_list = add_fc_head(input_model, conv_param_list[-1], input_class, device_opts, is_test=is_test)
@@ -57,7 +61,7 @@ def addModel(input_model, input_data, input_label, input_class, input_scales, in
 
         concate_reshape_name = add_shared_net(input_model, conv_param_list, 'scale{}'.format(input_scales[1]),
                                               input_scale=input_scales[1], input_batch_size=input_batch_size,
-                                              input_raw_name=input_data, device_opts=device_opts, is_test=is_test)
+                                              input_raw_name=feed_data_name, device_opts=device_opts, is_test=is_test)
 
         conv_pool_param = copy.deepcopy(conv_param_list[-1])
         conv_pool_param['out_blob_name'] = concate_reshape_name
