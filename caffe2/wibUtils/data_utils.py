@@ -9,6 +9,7 @@ import lmdb
 import pickle
 import random
 import numpy as np
+import cv2
 import config
 import requests
 import tarfile
@@ -116,6 +117,7 @@ def load_data(files, data_dir, label_count):
     data = data[:, (2, 1, 0), :, :]
     return data, labels
 
+
 def load_class_name_dict(input_name_path):
     # Open label file handler
     labels_handler = open(input_name_path, "r")
@@ -150,16 +152,18 @@ def load_data_from_dir(input_dir, input_class_dict):
 
         cur_img_path = cur_path
         cur_img_label = input_class_dict[cur_path.split('_')[-1].split('.')[0]]
-        img_data = imread(cur_img_path)
+        img_data = cv2.imread(cur_img_path)
+        img_data = img_data.transpose((2, 0, 1))
         data_list.append(img_data)
         label_list.append(cur_img_label)
         cur_num += 1
 
     np_data = np.array(data_list)
     np_data = np_data.reshape([-1, config.IMG_CHANNELS, config.IMAGE_SIZE, config.IMAGE_SIZE])
-    np_data = np_data[:, (2, 1, 0), :, :]
+    # np_data = np_data[:, (2, 1, 0), :, :]
     np_label = np.array(label_list).astype('int32')
     return np_data, np_label
+
 
 def load_data_from_image_path(input_label_path):
 
@@ -250,6 +254,7 @@ def normalization(x_train, x_test):
     # BGR std & mean
     mean = [113.865, 122.95, 125.307]
     std = [66.7048, 62.0887, 62.9932]
+
     for i in range(3):
         x_train[:, i, :, :] = (x_train[:, i, :, :] - mean[i]) / std[i]
         x_test[:, i, :, :] = (x_test[:, i, :, :] - mean[i]) / std[i]
