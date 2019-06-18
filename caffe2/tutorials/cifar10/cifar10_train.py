@@ -24,8 +24,8 @@ def parse_args():
                         help="input scale num")
     parser.add_argument("--num_label", type=int, default=10,
                         help="Number of label")
-    parser.add_argument('--learning_rate', type=float, default=0.01, metavar='NUMBER',
-                            help='learning rate(default: 0.01)')
+    parser.add_argument('--learning_rate', type=float, default=0.001, metavar='NUMBER',
+                            help='learning rate(default: 0.001)')
     parser.add_argument('--batch_size', type=int, default=100, metavar='NUMBER',
                         help='batch size(default: 100)')
     parser.add_argument('--epochs', type=int, default=200, metavar='NUMBER',
@@ -65,8 +65,10 @@ if __name__ == '__main__':
     assert os.path.isdir(testing_dir), 'Invalid testing_dir:{}'.format(testing_dir)
 
     name_dict = load_class_name_dict(class_name_path)
-    train_x,train_y = load_data_from_dir(training_dir, name_dict)
+    train_x, train_y = load_data_from_dir(training_dir, name_dict)
     test_x, test_y = load_data_from_dir(testing_dir, name_dict)
-    train_x, test_x = normalization(train_x, test_x)
+    if args.use_augmentation:
+        train_x, test_x = normalization(train_x, test_x)
+    validation_num = 6000
 
     do_train(train_x, train_y, test_x, test_y, device_opts, args)
